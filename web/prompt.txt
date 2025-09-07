@@ -1,0 +1,23 @@
+You are an expert web developer. Your task is to create a modern, interactive Wordle-like web app with the following requirements:
+
+- Use only HTML, CSS, and JavaScript (no frameworks)
+- The UI must be clean, responsive, and visually similar to https://wordle.ai/
+- Implement a 6x5 grid for guesses, with color-coded feedback (green/yellow/black)
+- Allow manual play: user types guesses, selects feedback for each letter
+- Show a list of optimal first guesses (entropy or popularity based)
+- Implement a bot that can automatically solve the puzzle by:
+  - Picking a random first guess from a curated list
+  - Calling a public API (e.g., /daily endpoint) to get feedback
+  - Filtering possible words and calculating entropy to suggest the next guess
+  - Looping until the answer is found or attempts run out
+- Visualize all guesses and feedback on the grid
+- Add click-to-fill suggestions, reset button, and win notification
+- All UI messages and comments must be in English
+- Code must be clean, modular, and easy to maintain
+
+Deliver a project with:
+- index.html, style.css, script.js, words.js
+- README.md with usage and customization instructions
+- prompt.txt (this file)
+
+The result should be a beautiful, user-friendly Wordle bot web app that can be run locally in any browser.
