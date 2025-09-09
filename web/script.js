@@ -107,24 +107,17 @@ window.addEventListener("keydown", handleKey);
 function getFeedback(guess, answer) {
   // Return array of status: 'green', 'yellow', 'black' for each letter
   const res = Array(5).fill("black");
-  const answerArr = answer.split("");
-  const used = Array(5).fill(false);
   // Mark green
   for (let i = 0; i < 5; i++) {
-    if (guess[i] === answerArr[i]) {
+    if (guess[i] === answer[i]) {
       res[i] = "green";
-      used[i] = true;
     }
   }
-  // Mark yellow
+  // Mark yellow: if character exists anywhere in answer and is not already green
   for (let i = 0; i < 5; i++) {
     if (res[i] === "green") continue;
-    for (let j = 0; j < 5; j++) {
-      if (!used[j] && guess[i] === answerArr[j]) {
-        res[i] = "yellow";
-        used[j] = true;
-        break;
-      }
+    if (answer.includes(guess[i])) {
+      res[i] = "yellow";
     }
   }
   return res;
