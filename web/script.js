@@ -6,33 +6,13 @@ let currentGuess = [];
 let currentStatus = Array(COLS).fill("white");
 const colorOrder = ["white", "black", "yellow", "green"];
 
-// Suggested first guesses (by entropy or popularity)
-const FIRST_GUESSES = [
-  "crane",
-  "slate",
-  "adieu",
-  "raise",
-  "trace",
-  "crate",
-  "slant",
-  "carte",
-  "react",
-  "later",
-  "table",
-  "least",
-  "stare",
-  "tears",
-  "rates",
-  "table",
-  "arise",
-  "irate",
-  "alone",
-  "audio",
-];
+// Best starting words based on entropy calculation
+const FIRST_GUESSES = ["crane", "slate", "adieu", "raise", "trace", "crate", "stare", "irate"];
 
 function createGrid() {
   grid.innerHTML = "";
-  // Display guessed rows
+  
+  // Display guessed rows with their API-provided status
   for (let r = 0; r < guesses.length; r++) {
     const row = document.createElement("div");
     row.className = "wordle-row";
@@ -40,39 +20,21 @@ function createGrid() {
       const cell = document.createElement("div");
       cell.className = "wordle-cell " + (statusGrid[r]?.[c] || "white");
       cell.textContent = guesses[r][c] ? guesses[r][c].toUpperCase() : "";
-      cell.dataset.row = r;
-      cell.dataset.col = c;
-      cell.dataset.status = statusGrid[r]?.[c] || "white";
-      cell.addEventListener("click", function () {
-        let idx = colorOrder.indexOf(cell.dataset.status);
-        idx = (idx + 1) % colorOrder.length;
-        cell.dataset.status = colorOrder[idx];
-        cell.className = "wordle-cell " + colorOrder[idx];
-        statusGrid[r][c] = colorOrder[idx];
-      });
+      cell.id = `cell-${r}-${c}`;
       row.appendChild(cell);
     }
     grid.appendChild(row);
   }
-  // Display current row (if attempts remain)
+  
+  // Display current row for input (if attempts remain)
   if (guesses.length < ROWS) {
     const row = document.createElement("div");
     row.className = "wordle-row";
     for (let c = 0; c < COLS; c++) {
       const cell = document.createElement("div");
-      cell.className = "wordle-cell " + currentStatus[c];
+      cell.className = "wordle-cell white"; // Always white for input row
       cell.textContent = currentGuess[c] ? currentGuess[c].toUpperCase() : "";
-      cell.dataset.row = guesses.length;
-      cell.dataset.col = c;
-      cell.dataset.status = currentStatus[c];
-      cell.addEventListener("click", function () {
-        if (!currentGuess[c]) return;
-        let idx = colorOrder.indexOf(cell.dataset.status);
-        idx = (idx + 1) % colorOrder.length;
-        cell.dataset.status = colorOrder[idx];
-        cell.className = "wordle-cell " + colorOrder[idx];
-        currentStatus[c] = colorOrder[idx];
-      });
+      cell.id = `cell-${guesses.length}-${c}`;
       row.appendChild(cell);
     }
     grid.appendChild(row);
@@ -103,17 +65,18 @@ function handleKey(e) {
 
 window.addEventListener("keydown", handleKey);
 
-// Compare guess status with answer
+// Evaluate the guess against the answer and return status array
 function getFeedback(guess, answer) {
-  // Return array of status: 'green', 'yellow', 'black' for each letter
   const res = Array(5).fill("black");
-  // Mark green
+  
+  // Check for exact matches (green)
   for (let i = 0; i < 5; i++) {
     if (guess[i] === answer[i]) {
       res[i] = "green";
     }
   }
-  // Mark yellow: if character exists anywhere in answer and is not already green
+  
+  // Check for correct letters in wrong positions (yellow)
   for (let i = 0; i < 5; i++) {
     if (res[i] === "green") continue;
     if (answer.includes(guess[i])) {
@@ -170,55 +133,56 @@ document.getElementById("submit-btn").addEventListener("click", async () => {
   const botEl = document.getElementById("bot-suggestion");
   const congratsEl = document.getElementById("congrats");
   congratsEl.style.display = "none";
-  if (currentGuess.length === COLS) {
-    if (currentStatus.some((s) => s === "white")) {
-      botEl.textContent = "Please select a status for all letters!";
-      return;
+
+  if (currentGuess.length !== COLS) {
+    botEl.textContent = "Please enter a 5-letter word";
+    return;
+  }
+
+  botEl.innerHTML = '<span style="color:#888">Validating word...</span> <span class="loader"></span>';
+  
+  try {
+    const word = currentGuess.join('').toLowerCase();
+    const apiRes = await callWordleApi(word);
+    
+    if (!apiRes?.length === COLS) {
+      throw new Error('Invalid API response');
     }
+    
+    const colors = apiRes.map(r => mapApiResultToColor(r.result));
     guesses.push([...currentGuess]);
-    statusGrid.push([...currentStatus]);
+    statusGrid.push(colors);
     currentGuess = [];
     currentStatus = Array(COLS).fill("white");
     createGrid();
-  }
-  for (let row = 0; row < statusGrid.length; row++) {
-    if (statusGrid[row].some((s) => s === "white")) {
-      botEl.textContent =
-        "Please select a status for all letters in row " + (row + 1) + "!";
+
+    if (colors.every(c => c === 'green')) {
+      congratsEl.style.display = "block";
+      botEl.innerHTML = `<span style='color:#22c55e'>Correct! The answer is <b>${word.toUpperCase()}</b></span>`;
       return;
     }
-  }
-  if (guesses.length === 0) {
-    botEl.textContent = "Please enter at least one word!";
-    return;
-  }
-  if (
-    statusGrid.length > 0 &&
-    statusGrid[statusGrid.length - 1].every((s) => s === "green")
-  ) {
-    congratsEl.style.display = "block";
-    botEl.innerHTML = "";
-    return;
-  }
-  // Loading effect
-  botEl.innerHTML =
-    '<span style="color:#888">Calculating suggestions...</span> <span class="loader" style="display:inline-block;width:1em;height:1em;border:2.5px solid #ccc;border-top:2.5px solid #22c55e;border-radius:50%;animation:spin 0.7s linear infinite;vertical-align:middle;"></span>';
-  await new Promise((r) => setTimeout(r, 50)); // Ensure loading is shown
 
-  // Filter possible words
-  let possible = filterWords(WORDS, guesses, statusGrid);
-  if (possible.length === 0) {
-    botEl.textContent = "No matching words left!";
-    return;
+    botEl.innerHTML = '<span style="color:#888">Analyzing next moves...</span> <span class="loader"></span>';
+
+    const possible = filterWords(WORDS, guesses, statusGrid);
+    if (possible.length === 0) {
+      botEl.textContent = "No valid words match the pattern";
+      return;
+    }
+
+    const scored = possible
+      .map(word => ({
+        word,
+        entropy: calcEntropy(word, possible),
+      }))
+      .sort((a, b) => b.entropy - a.entropy);
+
+    renderSuggestions(scored.map(s => s.word), false);
+
+  } catch (error) {
+    console.error('Error:', error);
+    botEl.textContent = "Error: Could not validate word";
   }
-  // Calculate entropy for all possible words
-  let scored = possible.map((word) => ({
-    word,
-    entropy: calcEntropy(word, possible),
-  }));
-  scored.sort((a, b) => b.entropy - a.entropy);
-  // Show top 5 suggestions
-  renderSuggestions(scored.map(s => s.word), false);
 });
 
 // Thêm hiệu ứng loading cho bot
@@ -263,9 +227,22 @@ document.getElementById("reset-btn").addEventListener("click", () => {
 });
 
 // --- Bot Automation ---
-async function callDailyApi(guess) {
-  // Use the provided API URL
-  const url = `https://wordle.votee.dev:8000/daily?guess=${guess}`;
+// Global variable to track current mode
+let currentMode = 'daily';
+let customWord = '';
+let currentSeed = 1; // Track current seed for random mode
+
+async function callWordleApi(guess) {
+  // Use the provided API URL based on current mode
+  let url = '';
+  if (currentMode === 'word') {
+    url = `https://wordle.votee.dev:8000/word/${customWord}?guess=${guess}`; // word mode uses path parameter for target word
+  } else if (currentMode === 'random' && currentSeed > 0) {
+    url = `https://wordle.votee.dev:8000/random?guess=${guess}&seed=${currentSeed}`; // random mode with seed
+  } else {
+    url = `https://wordle.votee.dev:8000/${currentMode}?guess=${guess}`; // daily and random without seed
+  }
+  
   try {
     const res = await fetch(url);
     if (!res.ok) throw new Error("API error");
@@ -282,18 +259,103 @@ function mapApiResultToColor(result) {
   return "white";
 }
 
+// Event listener is added at the bottom of the file
+
+// Add tab switching logic
+function switchTab(mode) {
+  // Update UI
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.classList.remove('active');
+    btn.style.borderBottom = '2px solid transparent';
+    btn.style.color = '#6b7280';
+  });
+  document.getElementById(`tab-${mode}`).classList.add('active');
+  document.getElementById(`tab-${mode}`).style.borderBottom = '2px solid #22c55e';
+  document.getElementById(`tab-${mode}`).style.color = '#22c55e';
+
+  // Reset game state
+  currentMode = mode;
+  guesses = [];
+  statusGrid = [];
+  currentGuess = [];
+  currentStatus = Array(COLS).fill("white");
+  createGrid();
+  renderSuggestions(FIRST_GUESSES, true);
+  document.getElementById("congrats").style.display = "none";
+  
+  const customWordDisplay = document.getElementById('custom-word-display');
+  const seedDisplay = document.getElementById('seed-display');
+
+  // Reset displays
+  customWordDisplay.style.display = 'none';
+  seedDisplay.style.display = 'none';
+  customWord = '';
+  currentSeed = 0;
+  
+  // Handle different modes
+  if (mode === 'word') {
+    const word = prompt('Enter a 5-letter word:');
+    if (!word) {
+      switchTab('daily');
+      return;
+    }
+    if (word.length > 5) {
+      alert('Word is too long! Please enter exactly 5 letters.');
+      switchTab('daily');
+      return;
+    }
+    if (word.length < 5) {
+      alert('Word is too short! Please enter exactly 5 letters.');
+      switchTab('daily');
+      return;
+    }
+    if (!(/^[a-zA-Z]+$/.test(word))) {
+      alert('Invalid word! Please use letters (A-Z) only.');
+      switchTab('daily');
+      return;
+    }
+    customWord = word.toLowerCase();
+    customWordDisplay.innerHTML = `Custom Word: <span style="color: #22c55e; font-weight: 600;">${customWord.toUpperCase()}</span>`;
+    customWordDisplay.style.display = 'block';
+  } else if (mode === 'random') {
+    const seed = prompt('Enter a seed number (must be greater than 0):');
+    if (seed === null) {
+      currentSeed = 0; // Use random without seed
+      return;
+    }
+    if (seed.trim() === '') {
+      currentSeed = 0; // Use random without seed when empty input
+      return;
+    }
+    const seedNum = parseInt(seed);
+    if (!isNaN(seedNum) && seedNum > 0) {
+      currentSeed = seedNum;
+      seedDisplay.innerHTML = `Current Seed: <span style="color: #22c55e; font-weight: 600;">${currentSeed}</span>`;
+      seedDisplay.style.display = 'block';
+    } else {
+      alert('Invalid seed! Please enter a positive number (greater than 0).');
+      currentSeed = 0; // Use random without seed
+    }
+  }
+}
+
+// Add event listeners for tabs
+document.getElementById('tab-daily').addEventListener('click', () => switchTab('daily'));
+document.getElementById('tab-random').addEventListener('click', () => switchTab('random'));
+document.getElementById('tab-word').addEventListener('click', () => switchTab('word'));
+
+// Auto-solve using the Wordle API
 async function startBotAuto() {
   const botEl = document.getElementById("bot-suggestion");
   const congratsEl = document.getElementById("congrats");
   const startBtn = document.getElementById("start-bot-btn");
 
-  // Set loading state for button immediately
+  // Initialize UI state
   startBtn.disabled = true;
   const oldBtnText = startBtn.textContent;
-  startBtn.innerHTML = '<span class="loader" style="display:inline-block;width:1em;height:1em;border:2.5px solid #fff;border-top:2.5px solid #22c55e;border-radius:50%;animation:spin 0.7s linear infinite;vertical-align:middle;margin-right:0.5em;"></span>Running...';
-  // Force UI update before heavy logic
-  await new Promise(r => setTimeout(r, 0));
-
+  startBtn.innerHTML = '<span class="loader"></span>Running...';
+  
+  // Reset game state
   guesses = [];
   statusGrid = [];
   currentGuess = [];
@@ -301,49 +363,57 @@ async function startBotAuto() {
   createGrid();
   renderSuggestions(FIRST_GUESSES, true);
   congratsEl.style.display = "none";
-  botEl.innerHTML = '<span style="color:#888">Bot is guessing...</span>';
+  botEl.innerHTML = '<span style="color:#888">Analyzing possible solutions...</span>';
 
-  let found = false;
-  let guess = FIRST_GUESSES[Math.floor(Math.random() * FIRST_GUESSES.length)];
-  for (let attempt = 0; attempt < ROWS; attempt++) {
-    // 1. Call API with current guess
-    const apiRes = await callDailyApi(guess);
-    if (!apiRes || !Array.isArray(apiRes) || apiRes.length !== COLS) {
-      botEl.innerHTML = '<span style="color:red">API error or invalid response.</span>';
-      startBtn.disabled = false;
-      startBtn.textContent = oldBtnText;
-      return;
+  try {
+    let found = false;
+    let guess = FIRST_GUESSES[Math.floor(Math.random() * FIRST_GUESSES.length)];
+    
+    for (let attempt = 0; attempt < ROWS; attempt++) {
+      const apiRes = await callWordleApi(guess);
+      if (!apiRes?.length === COLS) {
+        throw new Error('Invalid API response');
+      }
+
+      const colors = apiRes.map(r => mapApiResultToColor(r.result));
+      guesses.push(guess.split(""));
+      statusGrid.push(colors);
+      createGrid();
+      
+      await new Promise(r => setTimeout(r, 600));
+
+      if (colors.every(c => c === "green")) {
+        found = true;
+        congratsEl.style.display = "block";
+        botEl.innerHTML = `<span style='color:#22c55e'>Solution found: <b>${guess.toUpperCase()}</b></span>`;
+        break;
+      }
+
+      let possible = filterWords(WORDS, guesses, statusGrid);
+      if (possible.length === 0) break;
+
+      let scored = possible.map(word => ({
+        word,
+        entropy: calcEntropy(word, possible),
+      })).sort((a, b) => b.entropy - a.entropy);
+
+      guess = scored[0].word;
     }
-    // 2. Parse API response
-    const colors = apiRes.map(r => mapApiResultToColor(r.result));
-    guesses.push(guess.split(""));
-    statusGrid.push(colors);
-    createGrid();
-    await new Promise(r => setTimeout(r, 600)); // Show each step
-    if (colors.every(c => c === "green")) {
-      found = true;
-      congratsEl.style.display = "block";
-      botEl.innerHTML = `<span style='color:#22c55e;font-weight:600;'>Bot found the answer: <b>${guess.toUpperCase()}</b>!</span>`;
-      break;
+
+    if (!found) {
+      botEl.innerHTML = '<span style="color:#eab308">Could not find solution within 6 attempts</span>';
     }
-    // 3. Filter words and calculate entropy for the next guess
-    let possible = filterWords(WORDS, guesses, statusGrid);
-    if (possible.length === 0) break;
-    let scored = possible.map((word) => ({
-      word,
-      entropy: calcEntropy(word, possible),
-    }));
-    scored.sort((a, b) => b.entropy - a.entropy);
-    let suggestions = scored.map(s => s.word);
-    if (suggestions.length === 0) break;
-    guess = suggestions[0];
+  } catch (error) {
+    botEl.innerHTML = '<span style="color:red">Error: Could not complete auto-solve</span>';
+    console.error(error);
+  } finally {
+    startBtn.disabled = false;
+    startBtn.textContent = oldBtnText;
   }
-  if (!found) {
-    botEl.innerHTML = '<span style="color:#eab308;font-weight:600;">Bot could not find the answer within the allowed attempts!</span>';
-  }
-  // Remove loading state
-  startBtn.disabled = false;
-  startBtn.textContent = oldBtnText;
 }
 
 document.getElementById("start-bot-btn").addEventListener("click", startBotAuto);
+
+// Initialize game state
+createGrid();
+renderSuggestions(FIRST_GUESSES, true);

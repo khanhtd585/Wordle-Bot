@@ -1,3 +1,8 @@
+/* Tăng font-size cho các tab */
+.tab-btn {
+    font-size: 1.35rem !important;
+    padding: 0.6rem 1.3rem !important;
+}
 body {
     font-family: 'Segoe UI', Arial, sans-serif;
     background: #fff;
